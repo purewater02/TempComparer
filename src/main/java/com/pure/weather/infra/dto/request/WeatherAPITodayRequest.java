@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class WeatherAPITodayRequest {
   @JsonProperty("ServiceKey")
-  private String ServiceKey;
+  private String ServiceKey; // 이 망할 OPEN API가 첫글자를 대문자로 해놔서 @SpringQueryMap을 못 씀.
 
   private int pageNo;
   private int numOfRows;
@@ -33,7 +33,7 @@ public class WeatherAPITodayRequest {
         numOfRows,
         "JSON",
         base_date,
-        "0200", // 0200시 발표 활용하면 모두 처리 가능
+        "0500", // 0500시 발표 활용하면 모두 처리 가능
         nx,
         ny);
   }
