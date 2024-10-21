@@ -1,6 +1,7 @@
 package com.pure.weather.infra.feignConfig;
 
 import com.pure.weather.infra.dto.error.OpenAPIServiceResponse;
+import feign.Response;
 import feign.RetryableException;
 import feign.codec.ErrorDecoder;
 import jakarta.xml.bind.JAXBContext;
@@ -13,15 +14,14 @@ import org.springframework.http.HttpHeaders;
 public class CustomErrorDecoder implements ErrorDecoder {
 
   @Override
-  public Exception decode(String methodKey, feign.Response response) {
+  public Exception decode(String methodKey, Response response) {
     String contentType =
         response
             .headers()
-            .getOrDefault(HttpHeaders.CONTENT_TYPE, Collections.singleton(""))
+            .getOrDefault(HttpHeaders.CONTENT_TYPE, Collections.emptySet())
             .toString();
     if (contentType.contains("text/xml")) {
-      try {
-        InputStream body = response.body().asInputStream();
+      try (InputStream body = response.body().asInputStream()) {
         JAXBContext jaxbContext = JAXBContext.newInstance(OpenAPIServiceResponse.class);
         OpenAPIServiceResponse apiErrorResponse =
             (OpenAPIServiceResponse) jaxbContext.createUnmarshaller().unmarshal(body);

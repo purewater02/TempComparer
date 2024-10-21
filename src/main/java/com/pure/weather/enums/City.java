@@ -1,5 +1,10 @@
 package com.pure.weather.enums;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+@Getter
+@RequiredArgsConstructor
 public enum City {
   // 일부 지역만 사용
   SEOUL("108"),
@@ -17,12 +22,4 @@ public enum City {
   JEJU("184");
 
   private final String stnId;
-
-  City(String stnId) {
-    this.stnId = stnId;
-  }
-
-  public String getStnId() {
-    return stnId;
-  }
 }
