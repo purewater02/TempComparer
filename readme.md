@@ -11,4 +11,5 @@
 - MySQL, Spring Data JPA
 - spring-cloud-starter-openfeign
 - Spring-doc Swagger
-- 
+- docker-compose
+- spotless
