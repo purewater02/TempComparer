@@ -3,12 +3,16 @@ package com.pure.weather.infra;
 import com.pure.weather.infra.dto.request.WeatherAPICompareRequest;
 import com.pure.weather.infra.dto.response.WeatherAPICompareResponse;
 import com.pure.weather.infra.dto.response.WeatherAPITodayResposne;
+import com.pure.weather.infra.feignConfig.WeatherFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.cloud.openfeign.SpringQueryMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "weatherClient", url = "http://apis.data.go.kr")
+@FeignClient(
+    name = "weatherClient",
+    url = "http://apis.data.go.kr",
+    configuration = WeatherFeignConfig.class)
 public interface WeatherFeignClient {
   @GetMapping(value = "/1360000/AsosDalyInfoService/getWthrDataList", produces = "application/json")
   WeatherAPICompareResponse getCompareInfo(
