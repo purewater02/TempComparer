@@ -1,0 +1,40 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: weather
+  datasource:
+    url: 'jdbc:mysql://localhost:3306/weather'
+    username: 'pure'
+    password: 'pure1234'
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        format_sql: true
+        show_sql: true
+  cloud:
+    openfeign:
+      client:
+        config:
+            default:
+                connectTimeout: 5000
+                readTimeout: 5000
+                logger-level: full
+
+springdoc:
+  swagger-ui:
+    path: /api-docs
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    com.pure.weather.infra.WeatherFeignClient: DEBUG
+
+weather:
+  api:
+    key: 55nFTAvqM4vkEWF3ch2ffTKHWpQr0akZ4bpK5qCB02doGBsauMEoZr1qcf%2F8bxfm04kWv14botYx7n6EGHkS1w%3D%3D
