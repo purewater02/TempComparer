@@ -1,6 +1,8 @@
 package com.pure.weather.infra.dto.response;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -46,5 +48,15 @@ public class WeatherAPICompareResponse {
     private String avgTa; // 평균 기온
     private String minTa; // 최저 기온
     private String maxTa; // 최고 기온
+  }
+
+  public static List<Item> getItems(final WeatherAPICompareResponse response) {
+    return Optional.ofNullable(response)
+        .map(WeatherAPICompareResponse::getResponse)
+        .map(Response::getBody)
+        .map(Body::getItems)
+        .map(Items::getItem)
+        .filter(item -> !item.isEmpty())
+        .orElse(Collections.emptyList());
   }
 }

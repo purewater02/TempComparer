@@ -2,8 +2,7 @@ package com.pure.weather.web;
 
 import com.pure.weather.application.WeatherService;
 import com.pure.weather.application.dto.response.CompareTodayResponse;
-import com.pure.weather.application.dto.response.CompareWithLastYearMonthResponse;
-import com.pure.weather.application.dto.response.CompareWithLastYearWeekResponse;
+import com.pure.weather.application.dto.response.CompareWithLastYearResponse;
 import com.pure.weather.enums.SearchType;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -29,20 +28,20 @@ public class WeatherController {
   }
 
   @GetMapping("/last-year-week")
-  public ResponseEntity<CompareWithLastYearWeekResponse> compareTodayAndLastYearWeek(
+  public ResponseEntity<CompareWithLastYearResponse> compareTodayAndLastYearWeek(
       @RequestParam("city") String city) {
     weatherService.collectAndSaveTodayTempData(city);
     weatherService.collectAndSaveLastYearTempData(SearchType.WEEK, city, LocalDate.now());
 
-    return ResponseEntity.ok(weatherService.compareWithLastYearWeek(city));
+    return ResponseEntity.ok(weatherService.compareWithLastYear(SearchType.WEEK, city));
   }
 
   @GetMapping("/last-year-month")
-  public ResponseEntity<CompareWithLastYearMonthResponse> compareTodayAndLastYearMonth(
+  public ResponseEntity<CompareWithLastYearResponse> compareTodayAndLastYearMonth(
       @RequestParam("city") String city) {
     weatherService.collectAndSaveTodayTempData(city);
     weatherService.collectAndSaveLastYearTempData(SearchType.MONTH, city, LocalDate.now());
 
-    return ResponseEntity.ok(weatherService.compareWithLastYearMonth(city));
+    return ResponseEntity.ok(weatherService.compareWithLastYear(SearchType.MONTH, city));
   }
 }

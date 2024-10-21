@@ -1,9 +1,15 @@
 package com.pure.weather.infra.dto.response;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class WeatherAPITodayResposne {
   private Response response;
 
@@ -43,5 +49,15 @@ public class WeatherAPITodayResposne {
     private String fcstValue; // 예보 값
     private int nx; // X 좌표
     private int ny; // Y 좌표
+  }
+
+  public static List<Item> getItems(final WeatherAPITodayResposne response) {
+    return Optional.ofNullable(response)
+        .map(WeatherAPITodayResposne::getResponse)
+        .map(Response::getBody)
+        .map(Body::getItems)
+        .map(Items::getItem)
+        .filter(item -> !item.isEmpty())
+        .orElse(Collections.emptyList());
   }
 }

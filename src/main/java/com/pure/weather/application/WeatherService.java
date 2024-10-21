@@ -1,8 +1,7 @@
 package com.pure.weather.application;
 
 import com.pure.weather.application.dto.response.CompareTodayResponse;
-import com.pure.weather.application.dto.response.CompareWithLastYearMonthResponse;
-import com.pure.weather.application.dto.response.CompareWithLastYearWeekResponse;
+import com.pure.weather.application.dto.response.CompareWithLastYearResponse;
 import com.pure.weather.domain.Temperature;
 import com.pure.weather.enums.City;
 import com.pure.weather.enums.Coord;
@@ -16,9 +15,11 @@ import com.pure.weather.util.DateCalculator;
 import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 
 @RequiredArgsConstructor
@@ -31,49 +32,52 @@ public class WeatherService {
   private final WeatherFeignClient weatherFeignClient;
   private final TemperatureRepository temperatureRepository;
 
-  @Transactional
-  public void collectAndSaveLastYearTempData(SearchType type, String city, LocalDate date) {
+  private Pair<String, String> getStartEndPair(final SearchType type, final LocalDate date) {
     String start = null;
     String end = null;
     if (type.equals(SearchType.WEEK)) {
-      String[] lastYearWeekRange = DateCalculator.getLastYearWeekRange(date);
-      start = lastYearWeekRange[0];
-      end = lastYearWeekRange[1];
+      String[] weekRange = DateCalculator.getLastYearWeekRange(date);
+      start = weekRange[0];
+      end = weekRange[1];
     } else if (type.equals(SearchType.MONTH)) {
-      String[] lastYearMonthRange = DateCalculator.getLastYearMonthRange(date);
-      start = lastYearMonthRange[0];
-      end = lastYearMonthRange[1];
+      String[] monthRange = DateCalculator.getLastYearMonthRange(date);
+      start = monthRange[0];
+      end = monthRange[1];
     }
+    assert start != null;
+    assert end != null;
+    return Pair.of(start, end);
+  }
 
+  @Transactional
+  public void collectAndSaveLastYearTempData(SearchType type, String city, LocalDate date) {
+    Pair<String, String> startEndPair = getStartEndPair(type, date);
     WeatherAPICompareResponse response =
         weatherFeignClient.getCompareInfo(
             WeatherAPICompareRequest.of(
-                serviceKey, 1, 31, start, end, City.valueOf(city).getStnId()));
+                serviceKey,
+                1,
+                31,
+                startEndPair.getFirst(),
+                startEndPair.getSecond(),
+                City.valueOf(city).getStnId()));
 
-    if (response != null
-        && response.getResponse() != null
-        && response.getResponse().getBody() != null) {
-      response
-          .getResponse()
-          .getBody()
-          .getItems()
-          .getItem()
-          .forEach(
-              item -> {
-                boolean exists =
-                    temperatureRepository.existsByDateAndCity(
-                        LocalDate.parse(item.getTm()), City.valueOf(city));
-                if (!exists) {
-                  temperatureRepository.save(
-                      Temperature.of(
-                          City.valueOf(city),
-                          LocalDate.parse(item.getTm()),
-                          Double.valueOf(item.getAvgTa()),
-                          Double.valueOf(item.getMaxTa()),
-                          Double.valueOf(item.getMinTa())));
-                }
-              });
-    }
+    WeatherAPICompareResponse.getItems(response)
+        .forEach(
+            item -> {
+              boolean exists =
+                  temperatureRepository.existsByDateAndCity(
+                      LocalDate.parse(item.getTm()), City.valueOf(city));
+              if (!exists) {
+                temperatureRepository.save(
+                    Temperature.of(
+                        City.valueOf(city),
+                        LocalDate.parse(item.getTm()),
+                        Double.valueOf(item.getAvgTa()),
+                        Double.valueOf(item.getMaxTa()),
+                        Double.valueOf(item.getMinTa())));
+              }
+            });
   }
 
   @Transactional
@@ -90,44 +94,37 @@ public class WeatherService {
             Coord.valueOf(city).getLat(),
             Coord.valueOf(city).getLon());
 
-    Double avgTemp = null;
-    Double maxTemp = null;
-    Double minTemp = null;
+    AtomicReference<Double> avgTemp = new AtomicReference<>();
+    AtomicReference<Double> maxTemp = new AtomicReference<>();
+    AtomicReference<Double> minTemp = new AtomicReference<>();
 
-    if (response != null
-        && response.getResponse() != null
-        && response.getResponse().getBody() != null) {
-      List<WeatherAPITodayResposne.Item> list =
-          response.getResponse().getBody().getItems().getItem();
+    WeatherAPITodayResposne.getItems(response)
+        .forEach(
+            item -> {
+              switch (item.getCategory()) {
+                case "TMP" -> avgTemp.set(Double.valueOf(item.getFcstValue()));
+                case "TMX" -> maxTemp.set(Double.valueOf(item.getFcstValue()));
+                case "TMN" -> minTemp.set(Double.valueOf(item.getFcstValue()));
+              }
+            });
 
-      for (WeatherAPITodayResposne.Item item : list) {
-        if (item.getCategory().equals("TMP")) {
-          avgTemp = Double.valueOf(item.getFcstValue());
-        } else if (item.getCategory().equals("TMX")) {
-          maxTemp = Double.valueOf(item.getFcstValue());
-        } else if (item.getCategory().equals("TMN")) {
-          minTemp = Double.valueOf(item.getFcstValue());
-        }
-      }
+    Double finalAvgTemp = avgTemp.get();
+    Double finalMaxTemp = maxTemp.get();
+    Double finalMinTemp = minTemp.get();
 
-      Double finalAvgTemp = avgTemp;
-      Double finalMaxTemp = maxTemp;
-      Double finalMinTemp = minTemp;
-
-      temperatureRepository
-          .findByDateAndCity(today, City.valueOf(city))
-          .ifPresentOrElse(
-              temperature -> {
-                log.info("collectAndSaveTodayTempData: update temperature data");
-                temperature.update(finalAvgTemp, finalMaxTemp, finalMinTemp);
-              },
-              () -> {
-                log.info("collectAndSaveTodayTempData: save data");
-                temperatureRepository.save(
-                    Temperature.of(
-                        City.valueOf(city), today, finalAvgTemp, finalMaxTemp, finalMinTemp));
-              });
-    }
+    temperatureRepository
+        .findByDateAndCity(today, City.valueOf(city))
+        .ifPresentOrElse(
+            temperature -> {
+              log.info("collectAndSaveTodayTempData: update temperature data");
+              temperature.update(finalAvgTemp, finalMaxTemp, finalMinTemp);
+            },
+            () -> {
+              log.info("collectAndSaveTodayTempData: save data");
+              temperatureRepository.save(
+                  Temperature.of(
+                      City.valueOf(city), today, finalAvgTemp, finalMaxTemp, finalMinTemp));
+            });
   }
 
   @Transactional
@@ -144,44 +141,37 @@ public class WeatherService {
             Coord.valueOf(city).getLat(),
             Coord.valueOf(city).getLon());
 
-    Double avgTemp = null;
-    Double maxTemp = null;
-    Double minTemp = null;
+    AtomicReference<Double> avgTemp = new AtomicReference<>();
+    AtomicReference<Double> maxTemp = new AtomicReference<>();
+    AtomicReference<Double> minTemp = new AtomicReference<>();
 
-    if (response != null
-        && response.getResponse() != null
-        && response.getResponse().getBody() != null) {
-      List<WeatherAPITodayResposne.Item> list =
-          response.getResponse().getBody().getItems().getItem();
+    WeatherAPITodayResposne.getItems(response)
+        .forEach(
+            item -> {
+              switch (item.getCategory()) {
+                case "TMP" -> avgTemp.set(Double.valueOf(item.getFcstValue()));
+                case "TMX" -> maxTemp.set(Double.valueOf(item.getFcstValue()));
+                case "TMN" -> minTemp.set(Double.valueOf(item.getFcstValue()));
+              }
+            });
 
-      for (WeatherAPITodayResposne.Item item : list) {
-        if (item.getCategory().equals("TMP")) {
-          avgTemp = Double.valueOf(item.getFcstValue());
-        } else if (item.getCategory().equals("TMX")) {
-          maxTemp = Double.valueOf(item.getFcstValue());
-        } else if (item.getCategory().equals("TMN")) {
-          minTemp = Double.valueOf(item.getFcstValue());
-        }
-      }
+    Double finalAvgTemp = avgTemp.get();
+    Double finalMaxTemp = maxTemp.get();
+    Double finalMinTemp = minTemp.get();
 
-      Double finalAvgTemp = avgTemp;
-      Double finalMaxTemp = maxTemp;
-      Double finalMinTemp = minTemp;
-
-      temperatureRepository
-          .findByDateAndCity(yesterday, City.valueOf(city))
-          .ifPresentOrElse(
-              temperature -> {
-                log.info("collectAndSaveYesterdayTempData: update temperature data");
-                temperature.update(finalAvgTemp, finalMaxTemp, finalMinTemp);
-              },
-              () -> {
-                log.info("collectAndSaveYesterdayTempData: save data");
-                temperatureRepository.save(
-                    Temperature.of(
-                        City.valueOf(city), yesterday, finalAvgTemp, finalMaxTemp, finalMinTemp));
-              });
-    }
+    temperatureRepository
+        .findByDateAndCity(yesterday, City.valueOf(city))
+        .ifPresentOrElse(
+            temperature -> {
+              log.info("collectAndSaveYesterdayTempData: update temperature data");
+              temperature.update(finalAvgTemp, finalMaxTemp, finalMinTemp);
+            },
+            () -> {
+              log.info("collectAndSaveYesterdayTempData: save data");
+              temperatureRepository.save(
+                  Temperature.of(
+                      City.valueOf(city), yesterday, finalAvgTemp, finalMaxTemp, finalMinTemp));
+            });
   }
 
   public CompareTodayResponse compareTodayAndYesterdayTemp(String city) {
@@ -204,51 +194,28 @@ public class WeatherService {
         yesterdayTemp.getMinTemp());
   }
 
-  public CompareWithLastYearWeekResponse compareWithLastYearWeek(String city) {
+  public CompareWithLastYearResponse compareWithLastYear(SearchType type, String city) {
     LocalDate today = LocalDate.now();
-    String[] lastYearWeekRange = DateCalculator.getLastYearWeekRange(today);
-    LocalDate startOfLastYearWeek = DateCalculator.convertToLocalDate(lastYearWeekRange[0]);
-    LocalDate endOfLastYearWeek = DateCalculator.convertToLocalDate(lastYearWeekRange[1]);
-    List<Temperature> lastYearWeekData =
+    Pair<String, String> lastYearRange = getStartEndPair(type, today);
+    LocalDate startOfLastYear = DateCalculator.convertToLocalDate(lastYearRange.getFirst());
+    LocalDate endOfLastYear = DateCalculator.convertToLocalDate(lastYearRange.getSecond());
+
+    List<Temperature> lastYearData =
         temperatureRepository.findByCityAndDateBetween(
-            City.valueOf(city), startOfLastYearWeek, endOfLastYearWeek);
+            City.valueOf(city), startOfLastYear, endOfLastYear);
     Temperature todayTemp =
         temperatureRepository
             .findByDateAndCity(today, City.valueOf(city))
             .orElseThrow(() -> new IllegalArgumentException("no result for today"));
 
-    if (lastYearWeekData.isEmpty()) {
+    if (lastYearData.isEmpty()) {
       throw new IllegalArgumentException("no result for last year week");
     }
 
-    double lastYearWeekAvg =
-        lastYearWeekData.stream().mapToDouble(Temperature::getAverageTemp).average().orElse(0);
+    double lastYearAvg =
+        lastYearData.stream().mapToDouble(Temperature::getAverageTemp).average().orElse(0);
     double todayAvg = todayTemp.getAverageTemp();
 
-    return CompareWithLastYearWeekResponse.of(todayAvg, lastYearWeekAvg);
-  }
-
-  public CompareWithLastYearMonthResponse compareWithLastYearMonth(String city) {
-    LocalDate today = LocalDate.now();
-    String[] lastYearMonthRange = DateCalculator.getLastYearMonthRange(today);
-    LocalDate startOfLastYearMonth = DateCalculator.convertToLocalDate(lastYearMonthRange[0]);
-    LocalDate endOfLastYearMonth = DateCalculator.convertToLocalDate(lastYearMonthRange[1]);
-    List<Temperature> lastYearMonthData =
-        temperatureRepository.findByCityAndDateBetween(
-            City.valueOf(city), startOfLastYearMonth, endOfLastYearMonth);
-    Temperature todayTemp =
-        temperatureRepository
-            .findByDateAndCity(today, City.valueOf(city))
-            .orElseThrow(() -> new IllegalArgumentException("no result for today"));
-
-    if (lastYearMonthData.isEmpty()) {
-      throw new IllegalArgumentException("no result for last year month");
-    }
-
-    double lastYearMonthAvg =
-        lastYearMonthData.stream().mapToDouble(Temperature::getAverageTemp).average().orElse(0);
-    double todayAvg = todayTemp.getAverageTemp();
-
-    return CompareWithLastYearMonthResponse.of(todayAvg, lastYearMonthAvg);
+    return CompareWithLastYearResponse.of(type.name(), city, todayAvg, lastYearAvg);
   }
 }
